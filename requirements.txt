@@ -1,0 +1,10 @@
+Django>=4.2.0
+djangorestframework>=3.14.0
+djangorestframework-simplejwt>=5.3.0
+markdown>=3.5.1
+django-filter>=23.5
+Pillow>=10.0.0
+psycopg2-binary>=2.9.9
+# We're using SQLite for development, but keep psycopg2 for PostgreSQL support in production
+drf-yasg>=1.21.7
+django-cors-headers>=4.3.1

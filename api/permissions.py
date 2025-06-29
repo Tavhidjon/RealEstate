@@ -22,3 +22,41 @@ class ReadOnly(permissions.BasePermission):
     
     def has_permission(self, request, view):
         return request.method in permissions.SAFE_METHODS
+
+
+class IsAdminOrReadOnly(permissions.BasePermission):
+    """
+    Custom permission to only allow:
+    - Admin users (is_staff=True) can perform all actions: GET, POST, PUT, DELETE
+    - Regular users (is_staff=False) can only perform safe methods: GET, HEAD, OPTIONS
+    """
+    message = "Admin rights required to modify resources."
+    
+    def has_permission(self, request, view):
+        # Allow safe methods for all authenticated users
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        
+        # Admin users can perform all actions
+        return request.user and request.user.is_staff
+
+
+class IsOwnerOrAdmin(permissions.BasePermission):
+    """
+    Custom permission to only allow:
+    - Owners of an object to view and edit it
+    - Admins can view and edit all objects
+    """
+    message = "You must be the owner of this object or an admin."
+    
+    def has_object_permission(self, request, view, obj):
+        # Admin users have full access
+        if request.user and request.user.is_staff:
+            return True
+            
+        # Check if the object has a user field and if it matches the request user
+        if hasattr(obj, 'user'):
+            return obj.user == request.user
+        
+        # If object doesn't have user field, deny access
+        return False

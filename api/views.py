@@ -1,7 +1,7 @@
 from rest_framework import viewsets, filters, generics, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, BasePermission
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 import math
@@ -12,10 +12,12 @@ from .serializers import (
     CompanySerializer, BuildingSerializer, FloorSerializer, FlatSerializer,
     UserRegisterSerializer, UserDetailSerializer
 )
+from django.db.models import Count
+from .permissions import IsAdminOrReadOnly, IsOwnerOrAdmin
 
 
-# Custom permission class for admin-only write access
-class AdminWritePermission(BasePermission):
+# Custom permission class (legacy - use classes from permissions.py instead)
+class AdminWritePermission(permissions.BasePermission):
     """
     Custom permission to only allow:
     - Read-only access for all authenticated users
@@ -85,14 +87,31 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
 def logout_view(request):
     try:
         refresh_token = request.data.get("refresh")
-        if refresh_token:
+        if not refresh_token:
+            return Response({
+                "success": False,
+                "message": "Refresh token is required",
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Blacklist the token
+        try:
             token = RefreshToken(refresh_token)
             token.blacklist()
+        except Exception as token_error:
+            # Already blacklisted or other token error - still return success
+            # as the end result is the token can't be used
+            return Response({
+                "success": True,
+                "message": "Token already invalidated or logout already completed",
+                "info": str(token_error)
+            }, status=status.HTTP_200_OK)
             
+        # Also handle Django's logout for session-based auth if it's being used
         logout(request)
+        
         return Response({
             "success": True,
-            "message": "Successfully logged out."
+            "message": "Successfully logged out"
         }, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({
@@ -100,6 +119,65 @@ def logout_view(request):
             "message": "Logout failed",
             "error": str(e)
         }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def protected_example_view(request):
+    """
+    Example view protected by JWT authentication
+    """
+    return Response({
+        "success": True,
+        "message": "You have accessed a protected endpoint",
+        "user": {
+            "id": request.user.id,
+            "email": request.user.email,
+            "name": request.user.get_full_name(),
+            "is_staff": request.user.is_staff,
+        },
+        "timestamp": "UTC timestamp: " + str(request.user.last_login) if request.user.last_login else None
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def admin_panel_view(request):
+    """
+    Admin panel view - only accessible to admin users authenticated with JWT
+    """
+    # Get some statistics for the admin
+    user_count = AppUser.objects.count()
+    companies_count = Company.objects.count()
+    buildings_count = Building.objects.count()
+    floors_count = Floor.objects.count()
+    flats_count = Flat.objects.count()
+    
+    # Count buildings by company
+    buildings_by_company = list(Company.objects.annotate(
+        building_count=Count('buildings')
+    ).values('name', 'building_count'))
+    
+    # Return admin info
+    return Response({
+        "success": True,
+        "message": "Welcome to the admin panel",
+        "admin_user": {
+            "id": request.user.id,
+            "email": request.user.email,
+            "name": request.user.get_full_name(),
+            "is_staff": request.user.is_staff,
+            "is_superuser": request.user.is_superuser,
+        },
+        "statistics": {
+            "users": user_count,
+            "companies": companies_count,
+            "buildings": buildings_count,
+            "floors": floors_count,
+            "flats": flats_count,
+        },
+        "buildings_by_company": buildings_by_company
+    }, status=status.HTTP_200_OK)
 
 
 
@@ -110,16 +188,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name']
-    
-    def get_permissions(self):
-        """
-        Allow read access to any user, but require admin rights for write operations
-        """
-        if self.action in ['list', 'retrieve']:
-            permission_classes = [AllowAny]
-        else:
-            permission_classes = [IsAdminUser]
-        return [permission() for permission in permission_classes]
+    permission_classes = [IsAdminOrReadOnly]  # Using our custom permission class
     
     @action(detail=True, methods=['get'])
     def buildings(self, request, pk=None):
@@ -135,16 +204,7 @@ class BuildingViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name']
-    
-    def get_permissions(self):
-        """
-        Allow read access to any user, but require admin rights for write operations
-        """
-        if self.action in ['list', 'retrieve', 'nearby']:
-            permission_classes = [AllowAny]
-        else:
-            permission_classes = [IsAdminUser]
-        return [permission() for permission in permission_classes]
+    permission_classes = [IsAdminOrReadOnly]  # Using our custom permission class
     
     @action(detail=False, methods=['get'])
     def nearby(self, request):
@@ -198,16 +258,7 @@ class FloorViewSet(viewsets.ModelViewSet):
     serializer_class = FloorSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     ordering_fields = ['floor_number']
-    
-    def get_permissions(self):
-        """
-        Allow read access to any user, but require admin rights for write operations
-        """
-        if self.action in ['list', 'retrieve']:
-            permission_classes = [AllowAny]
-        else:
-            permission_classes = [IsAdminUser]
-        return [permission() for permission in permission_classes]
+    permission_classes = [IsAdminOrReadOnly]  # Using our custom permission class
     
     def get_queryset(self):
         queryset = Floor.objects.all()
@@ -232,16 +283,7 @@ class FlatViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['number']
     ordering_fields = ['number']
-    
-    def get_permissions(self):
-        """
-        Allow read access to any user, but require admin rights for write operations
-        """
-        if self.action in ['list', 'retrieve']:
-            permission_classes = [AllowAny]
-        else:
-            permission_classes = [IsAdminUser]
-        return [permission() for permission in permission_classes]
+    permission_classes = [IsAdminOrReadOnly]  # Using our custom permission class
     
     def get_queryset(self):
         queryset = Flat.objects.all()

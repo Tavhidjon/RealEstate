@@ -5,12 +5,18 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 import math
-from django.db.models import F, ExpressionWrapper, FloatField
+from django.db.models import F, ExpressionWrapper, FloatField, Q, Max, Prefetch, Count
 from django.contrib.auth import logout
-from .models import Company, Building, Floor, Flat, AppUser
+from django.views import View
+from django.views.generic import TemplateView
+from django.shortcuts import redirect
+from django.urls import reverse
+from django.conf import settings
+
+from .models import Company, Building, Floor, Flat, AppUser, Chat, Message
 from .serializers import (
     CompanySerializer, BuildingSerializer, FloorSerializer, FlatSerializer,
-    UserRegisterSerializer, UserDetailSerializer
+    UserRegisterSerializer, UserDetailSerializer, ChatSerializer, MessageSerializer
 )
 from django.db.models import Count
 from .permissions import IsAdminOrReadOnly, IsOwnerOrAdmin
@@ -293,3 +299,191 @@ class FlatViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(floor_id=floor_id)
         
         return queryset
+
+
+# ------------------- Profile Views -------------------
+
+class ProfileRedirectView(View):
+    """
+    Redirect view for Django's default profile page after login
+    This is used to redirect users after authenticating through Django admin or browsable API
+    """
+    def get(self, request):
+        # You can customize this redirect to point to any page you want
+        return redirect('/')
+
+
+class ProfileView(TemplateView):
+    """
+    Profile view for users to see and edit their profile information
+    """
+    template_name = "users/profile.html"
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['user'] = self.request.user
+        return context
+
+
+class ProfileUpdateView(generics.UpdateAPIView):
+    """
+    API View to handle profile updates via AJAX
+    """
+    queryset = AppUser.objects.all()
+    serializer_class = UserDetailSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_object(self):
+        return self.request.user
+    
+    def perform_update(self, serializer):
+        # Custom save logic can go here if needed
+        serializer.save()
+
+
+# ------------------- Swagger Views -------------------
+
+class SwaggerUIWithAuth(TemplateView):
+    """
+    Custom Swagger UI view that includes a form to input JWT tokens
+    """
+    template_name = 'swagger_with_auth.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['swagger_url'] = '/swagger/?format=openapi'
+        return context
+
+
+# ------------------- Chat Views -------------------
+
+class CompanyChatListView(generics.ListAPIView):
+    """List all companies for chat functionality"""
+    queryset = Company.objects.all()
+    serializer_class = CompanySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        # Handle Swagger schema generation
+        if getattr(self, 'swagger_fake_view', False):
+            return Company.objects.none()
+            
+        # You could add annotations here to show if there are unread messages
+        return Company.objects.all().order_by('name')
+
+
+class ChatViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing user chats with companies"""
+    serializer_class = ChatSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        # Handle Swagger schema generation
+        if getattr(self, 'swagger_fake_view', False):
+            return Chat.objects.none()
+            
+        # Only return chats that belong to the current user
+        return Chat.objects.filter(user=self.request.user).order_by('-updated_at')
+    
+    def perform_create(self, serializer):
+        # Auto-set the user to the current authenticated user
+        serializer.save(user=self.request.user)
+    
+    @action(detail=True, methods=['get'])
+    def messages(self, request, pk=None):
+        """Get all messages for a specific chat"""
+        chat = self.get_object()
+        messages = chat.messages.all().order_by('timestamp')
+        
+        # Mark all unread messages as read when user views them
+        if request.user == chat.user:
+            unread_messages = messages.filter(is_read=False, sender_type='company')
+            unread_messages.update(is_read=True)
+        
+        serializer = MessageSerializer(messages, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def send_message(self, request, pk=None):
+        """Send a new message in the chat"""
+        chat = self.get_object()
+        content = request.data.get('content')
+        
+        if not content:
+            return Response({'error': 'Message content is required'}, 
+                           status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create the message
+        message = Message.objects.create(
+            chat=chat,
+            sender_type='user',  # Since this is sent by the app user
+            content=content,
+            is_read=False
+        )
+        
+        # Update the chat's updated_at timestamp
+        chat.save()  # This will trigger the auto_now field
+        
+        serializer = MessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        """Get count of unread messages across all chats"""
+        # Ensure user is authenticated (should be handled by permission_classes,
+        # but adding an extra check for clarity)
+        if not request.user.is_authenticated:
+            return Response([], status=status.HTTP_401_UNAUTHORIZED)
+            
+        unread_counts = Chat.objects.filter(user=request.user)\
+            .annotate(unread=Count('messages', filter=Q(messages__is_read=False, messages__sender_type='company')))\
+            .values('id', 'company__name', 'unread')
+        
+        return Response(unread_counts)
+
+
+class CompanyChatViewSet(viewsets.ModelViewSet):
+    """ViewSet for company representatives to manage chats"""
+    serializer_class = ChatSerializer
+    permission_classes = [permissions.IsAuthenticated]  # Add custom permission for company users
+    
+    def get_queryset(self):
+        # Handle Swagger schema generation
+        if getattr(self, 'swagger_fake_view', False):
+            return Chat.objects.none()
+        
+        # Here we need a way to determine which company a user represents
+        # Since we don't have a company_id field on the user model currently,
+        # we'll need to create a proper implementation
+        
+        # For now, let's just return an empty queryset if there's no way to determine the company
+        # In a real implementation, you would have some way to link users to companies they represent
+        if hasattr(self.request.user, 'company_id'):
+            return Chat.objects.filter(company__id=self.request.user.company_id).order_by('-updated_at')
+        
+        # Return empty queryset if user doesn't represent any company
+        return Chat.objects.none()
+    
+    @action(detail=True, methods=['post'])
+    def reply(self, request, pk=None):
+        """Send a reply from the company to the user"""
+        chat = self.get_object()
+        content = request.data.get('content')
+        
+        if not content:
+            return Response({'error': 'Message content is required'}, 
+                           status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create the message
+        message = Message.objects.create(
+            chat=chat,
+            sender_type='company',  # Since this is sent by the company
+            content=content,
+            is_read=False
+        )
+        
+        # Update the chat's updated_at timestamp
+        chat.save()
+        
+        serializer = MessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

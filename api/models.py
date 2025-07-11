@@ -27,6 +27,9 @@ class Company(models.Model):
 
 class Building(models.Model):
     name = models.CharField(max_length=255)
+    address = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+    image = models.ImageField(upload_to='building_images/', blank=True, null=True)
     latitude = models.FloatField(help_text="Latitude coordinate")
     longitude = models.FloatField(help_text="Longitude coordinate")
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='buildings')
@@ -39,6 +42,7 @@ class Building(models.Model):
         blank=True,
         null=True
     )
+
 
     def __str__(self):
         return self.name
@@ -67,3 +71,40 @@ class Flat(models.Model):
 
     def __str__(self):
         return f"Flat {self.number} on Floor {self.floor.floor_number} ({self.floor.building.name})"
+
+
+class Chat(models.Model):
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name='chats')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='chats')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('user', 'company')
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"Chat between {self.user.username} and {self.company.name}"
+
+
+class Message(models.Model):
+    SENDER_CHOICES = (
+        ('user', 'User'),
+        ('company', 'Company'),
+    )
+    
+    chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name='messages')
+    sender_type = models.CharField(max_length=10, choices=SENDER_CHOICES)
+    content = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+    
+    class Meta:
+        ordering = ['timestamp']
+    
+    def __str__(self):
+        return f"Message in {self.chat} at {self.timestamp}"
+
+
+

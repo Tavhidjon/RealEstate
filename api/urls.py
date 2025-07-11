@@ -5,7 +5,8 @@ from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 from .views import (
     CompanyViewSet, BuildingViewSet, FloorViewSet, FlatViewSet,
     RegisterView, UserDetailView, logout_view, protected_example_view,
-    admin_panel_view
+    admin_panel_view, ChatViewSet, CompanyChatListView, CompanyChatViewSet,
+    ProfileRedirectView, SwaggerUIWithAuth
 )
 from .auth import EmailTokenObtainPairView
 from .root_view import ApiRootView
@@ -16,6 +17,8 @@ router.register(r'companies', CompanyViewSet)
 router.register(r'buildings', BuildingViewSet)
 router.register(r'floors', FloorViewSet)
 router.register(r'flats', FlatViewSet)
+router.register(r'chats', ChatViewSet, basename='chat')
+router.register(r'company-chats', CompanyChatViewSet, basename='company-chat')
 
 auth_urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
@@ -28,10 +31,15 @@ auth_urlpatterns = [
     path('debug-register/', RegisterView.as_view(), name='debug-register'),
 ]
 
+chat_urlpatterns = [
+    path('companies-list/', CompanyChatListView.as_view(), name='chat-companies-list'),
+]
+
 urlpatterns = [
     path('', ApiRootView.as_view(), name='api-root'),  # Custom API root view
     path('', include(router.urls)),
     path('auth/', include(auth_urlpatterns)),
+    path('chat/', include(chat_urlpatterns)),
     path('example/protected/', protected_example_view, name='protected-example'),
     path('auth/help/', AuthInstructionsView.as_view(), name='auth-instructions'),
     path('admin/panel/', admin_panel_view, name='admin-panel'),

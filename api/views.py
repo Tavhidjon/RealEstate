@@ -1,4 +1,5 @@
 from rest_framework import viewsets, filters, generics, status, permissions
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
@@ -13,10 +14,11 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.conf import settings
 
-from .models import Company, Building, Floor, Flat, AppUser, Chat, Message
+from .models import Company, Building, Floor, Flat, AppUser, BuildingImage
 from .serializers import (
     CompanySerializer, BuildingSerializer, FloorSerializer, FlatSerializer,
-    UserRegisterSerializer, UserDetailSerializer, ChatSerializer, MessageSerializer
+    UserRegisterSerializer, UserDetailSerializer, BuildingImageSerializer,
+    AdminUserListSerializer
 )
 from django.db.models import Count
 from .permissions import IsAdminOrReadOnly, IsOwnerOrAdmin
@@ -34,6 +36,15 @@ class AdminWritePermission(permissions.BasePermission):
             return True
         
         return request.user and request.user.is_staff
+
+
+# Admin-only permission class
+class IsAdminUser(permissions.BasePermission):
+    """
+    Custom permission to only allow access to admin users.
+    """
+    def has_permission(self, request, view):
+        return request.user and (request.user.is_staff or request.user.is_superuser)
 
 
 # Authentication Views
@@ -67,6 +78,29 @@ class RegisterView(generics.CreateAPIView):
                 "message": "Registration failed due to server error",
                 "error": str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AllUsersListView(generics.ListAPIView):
+    """
+    API endpoint that allows admins to view all users.
+    
+    This endpoint is only accessible to admin users and staff members.
+    Provides detailed information about all registered users including:
+    - Basic user information (username, email, name)
+    - Profile details (phone, profile picture)
+    - Account status (active/verified)
+    - Company affiliation
+    - Last login time
+    - Chat activity
+    
+    The list can be filtered and searched by username, email, or names.
+    """
+    queryset = AppUser.objects.all().order_by('-date_joined')
+    serializer_class = AdminUserListSerializer
+    permission_classes = [IsAdminUser]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['username', 'email', 'first_name', 'last_name']
+    ordering_fields = ['date_joined', 'username', 'email', 'is_verified', 'last_login']
 
 
 class UserDetailView(generics.RetrieveUpdateAPIView):
@@ -211,6 +245,66 @@ class BuildingViewSet(viewsets.ModelViewSet):
     search_fields = ['name']
     ordering_fields = ['name']
     permission_classes = [IsAdminOrReadOnly]  # Using our custom permission class
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    
+    @action(detail=True, methods=['post'], url_path='add-images')
+    def add_images(self, request, pk=None):
+        """Add multiple images to a building."""
+        building = self.get_object()
+        
+        # Get data from request
+        images = request.FILES.getlist('images', [])
+        captions = request.POST.getlist('captions', [])
+        orders = request.POST.getlist('orders', [])
+        
+        # Handle case where no images are provided
+        if not images and not request.POST.get('caption'):
+            # If neither images nor caption are provided, create a placeholder record
+            building_image = BuildingImage.objects.create(
+                building=building,
+                image=None,
+                caption="",
+                order=0
+            )
+            serializer = BuildingImageSerializer(building_image)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        # Create image objects
+        created_images = []
+        
+        # If there are no images but there's caption/order data, create records without images
+        if not images and (captions or orders):
+            max_items = max(len(captions), len(orders))
+            for i in range(max_items):
+                caption = captions[i] if i < len(captions) else ""
+                order = int(orders[i]) if i < len(orders) and orders[i].isdigit() else i
+                
+                building_image = BuildingImage.objects.create(
+                    building=building,
+                    image=None,
+                    caption=caption,
+                    order=order
+                )
+                created_images.append(building_image)
+        else:
+            # Process images if they exist
+            for i, image in enumerate(images):
+                # Get caption and order if available
+                caption = captions[i] if i < len(captions) else ""
+                order = int(orders[i]) if i < len(orders) and orders[i].isdigit() else i
+                
+                # Create the image
+                building_image = BuildingImage.objects.create(
+                    building=building,
+                    image=image,
+                    caption=caption,
+                    order=order
+                )
+                created_images.append(building_image)
+        
+        # Serialize and return the created images
+        serializer = BuildingImageSerializer(created_images, many=True)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     @action(detail=False, methods=['get'])
     def nearby(self, request):
@@ -355,135 +449,20 @@ class SwaggerUIWithAuth(TemplateView):
         return context
 
 
-# ------------------- Chat Views -------------------
-
-class CompanyChatListView(generics.ListAPIView):
-    """List all companies for chat functionality"""
-    queryset = Company.objects.all()
-    serializer_class = CompanySerializer
-    permission_classes = [permissions.IsAuthenticated]
+class BuildingImageViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for handling building images - create, update, delete operations
+    """
+    queryset = BuildingImage.objects.all()
+    serializer_class = BuildingImageSerializer
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAdminOrReadOnly]
     
     def get_queryset(self):
-        # Handle Swagger schema generation
-        if getattr(self, 'swagger_fake_view', False):
-            return Company.objects.none()
-            
-        # You could add annotations here to show if there are unread messages
-        return Company.objects.all().order_by('name')
-
-
-class ChatViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing user chats with companies"""
-    serializer_class = ChatSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get_queryset(self):
-        # Handle Swagger schema generation
-        if getattr(self, 'swagger_fake_view', False):
-            return Chat.objects.none()
-            
-        # Only return chats that belong to the current user
-        return Chat.objects.filter(user=self.request.user).order_by('-updated_at')
-    
-    def perform_create(self, serializer):
-        # Auto-set the user to the current authenticated user
-        serializer.save(user=self.request.user)
-    
-    @action(detail=True, methods=['get'])
-    def messages(self, request, pk=None):
-        """Get all messages for a specific chat"""
-        chat = self.get_object()
-        messages = chat.messages.all().order_by('timestamp')
+        queryset = BuildingImage.objects.all()
+        building_id = self.request.query_params.get('building_id', None)
         
-        # Mark all unread messages as read when user views them
-        if request.user == chat.user:
-            unread_messages = messages.filter(is_read=False, sender_type='company')
-            unread_messages.update(is_read=True)
+        if building_id:
+            queryset = queryset.filter(building_id=building_id)
         
-        serializer = MessageSerializer(messages, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def send_message(self, request, pk=None):
-        """Send a new message in the chat"""
-        chat = self.get_object()
-        content = request.data.get('content')
-        
-        if not content:
-            return Response({'error': 'Message content is required'}, 
-                           status=status.HTTP_400_BAD_REQUEST)
-        
-        # Create the message
-        message = Message.objects.create(
-            chat=chat,
-            sender_type='user',  # Since this is sent by the app user
-            content=content,
-            is_read=False
-        )
-        
-        # Update the chat's updated_at timestamp
-        chat.save()  # This will trigger the auto_now field
-        
-        serializer = MessageSerializer(message)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
-    @action(detail=False, methods=['get'])
-    def unread_count(self, request):
-        """Get count of unread messages across all chats"""
-        # Ensure user is authenticated (should be handled by permission_classes,
-        # but adding an extra check for clarity)
-        if not request.user.is_authenticated:
-            return Response([], status=status.HTTP_401_UNAUTHORIZED)
-            
-        unread_counts = Chat.objects.filter(user=request.user)\
-            .annotate(unread=Count('messages', filter=Q(messages__is_read=False, messages__sender_type='company')))\
-            .values('id', 'company__name', 'unread')
-        
-        return Response(unread_counts)
-
-
-class CompanyChatViewSet(viewsets.ModelViewSet):
-    """ViewSet for company representatives to manage chats"""
-    serializer_class = ChatSerializer
-    permission_classes = [permissions.IsAuthenticated]  # Add custom permission for company users
-    
-    def get_queryset(self):
-        # Handle Swagger schema generation
-        if getattr(self, 'swagger_fake_view', False):
-            return Chat.objects.none()
-        
-        # Here we need a way to determine which company a user represents
-        # Since we don't have a company_id field on the user model currently,
-        # we'll need to create a proper implementation
-        
-        # For now, let's just return an empty queryset if there's no way to determine the company
-        # In a real implementation, you would have some way to link users to companies they represent
-        if hasattr(self.request.user, 'company_id'):
-            return Chat.objects.filter(company__id=self.request.user.company_id).order_by('-updated_at')
-        
-        # Return empty queryset if user doesn't represent any company
-        return Chat.objects.none()
-    
-    @action(detail=True, methods=['post'])
-    def reply(self, request, pk=None):
-        """Send a reply from the company to the user"""
-        chat = self.get_object()
-        content = request.data.get('content')
-        
-        if not content:
-            return Response({'error': 'Message content is required'}, 
-                           status=status.HTTP_400_BAD_REQUEST)
-        
-        # Create the message
-        message = Message.objects.create(
-            chat=chat,
-            sender_type='company',  # Since this is sent by the company
-            content=content,
-            is_read=False
-        )
-        
-        # Update the chat's updated_at timestamp
-        chat.save()
-        
-        serializer = MessageSerializer(message)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return queryset

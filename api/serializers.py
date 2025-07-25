@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Company, Building, Floor, Flat, AppUser, Chat, Message
+from .models import Company, Building, Floor, Flat, AppUser, BuildingImage
 from rest_framework.validators import UniqueValidator
 
 
@@ -42,11 +42,48 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
 
 class UserDetailSerializer(serializers.ModelSerializer):
+    company_name = serializers.SerializerMethodField(read_only=True)
+    
     class Meta:
         model = AppUser
         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'phone_number', 
-                  'profile_picture', 'is_verified', 'date_joined')
-        read_only_fields = ('is_verified', 'date_joined')
+                  'profile_picture', 'is_verified', 'date_joined', 'is_active', 'company', 'company_name')
+        read_only_fields = ('is_verified', 'date_joined', 'is_active', 'company_name')
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request', None)
+        
+        # Only show admin fields to admin users
+        if request and request.user and not (request.user.is_staff or request.user.is_superuser):
+            admin_fields = ['is_active', 'company', 'company_name']
+            for field in admin_fields:
+                if field in self.fields:
+                    self.fields.pop(field)
+    
+    def get_company_name(self, obj):
+        if obj.company:
+            return obj.company.name
+        return None
+
+
+class AdminUserListSerializer(UserDetailSerializer):
+    """Enhanced serializer for admin view of all users"""
+    last_login_display = serializers.SerializerMethodField()
+    chat_count = serializers.SerializerMethodField()
+    
+    class Meta(UserDetailSerializer.Meta):
+        fields = UserDetailSerializer.Meta.fields + ('is_staff', 'is_superuser', 'last_login', 
+                                                    'last_login_display', 'chat_count')
+        read_only_fields = UserDetailSerializer.Meta.read_only_fields + ('last_login', 'last_login_display', 'chat_count')
+    
+    def get_last_login_display(self, obj):
+        if obj.last_login:
+            return obj.last_login.strftime('%Y-%m-%d %H:%M:%S')
+        return "Never"
+    
+    def get_chat_count(self, obj):
+        return obj.chats.count()
 
 
 # Company Serializer
@@ -56,9 +93,32 @@ class CompanySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+# BuildingImage Serializer
+class BuildingImageSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False)  # Make image optional
+    
+    class Meta:
+        model = BuildingImage
+        fields = ('id', 'building', 'image', 'caption', 'order')
+        
+    def validate_image(self, value):
+        """
+        Check that the image file is valid and not too large.
+        """
+        if value is None:
+            return value
+            
+        # Check file size (limit to 5MB)
+        if value.size > 5 * 1024 * 1024:  # 5MB
+            raise serializers.ValidationError("Image file too large. Size should not exceed 5MB.")
+            
+        return value
+        
+
 # Building Serializer
 class BuildingSerializer(serializers.ModelSerializer):
     distance = serializers.FloatField(required=False, read_only=True)
+    additional_images = BuildingImageSerializer(many=True, read_only=True)
     
     class Meta:
         model = Building
@@ -88,39 +148,4 @@ class FlatSerializer(serializers.ModelSerializer):
         return obj.floor.floor_number
 
 
-# Chat Serializers
-class MessageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Message
-        fields = ['id', 'chat', 'sender_type', 'content', 'timestamp', 'is_read']
-        read_only_fields = ['id', 'timestamp', 'is_read']
-
-
-class ChatSerializer(serializers.ModelSerializer):
-    company_name = serializers.ReadOnlyField(source='company.name')
-    last_message = serializers.SerializerMethodField()
-    unread_count = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Chat
-        fields = ['id', 'user', 'company', 'company_name', 'created_at', 
-                  'updated_at', 'is_active', 'last_message', 'unread_count']
-        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'company_name']
-    
-    def get_last_message(self, obj):
-        """Get the most recent message in the chat"""
-        last_message = obj.messages.order_by('-timestamp').first()
-        if last_message:
-            return {
-                'content': last_message.content[:50] + '...' if len(last_message.content) > 50 else last_message.content,
-                'timestamp': last_message.timestamp,
-                'sender_type': last_message.sender_type
-            }
-        return None
-    
-    def get_unread_count(self, obj):
-        """Get the count of unread messages for the user"""
-        request = self.context.get('request')
-        if request and hasattr(request, 'user') and request.user.is_authenticated and request.user == obj.user:
-            return obj.messages.filter(is_read=False, sender_type='company').count()
-        return 0
+# Chat serializers have been moved to chat_serializers.py

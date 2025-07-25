@@ -9,6 +9,8 @@ class AppUser(AbstractUser):
     profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
     is_verified = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
+    company = models.ForeignKey('Company', on_delete=models.SET_NULL, blank=True, null=True, 
+                               related_name='representatives')
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']  
@@ -29,7 +31,7 @@ class Building(models.Model):
     name = models.CharField(max_length=255)
     address = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
-    image = models.ImageField(upload_to='building_images/', blank=True, null=True)
+    image = models.ImageField(upload_to='building_images/', blank=True, null=True)  # Main image
     latitude = models.FloatField(help_text="Latitude coordinate")
     longitude = models.FloatField(help_text="Longitude coordinate")
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='buildings')
@@ -46,6 +48,25 @@ class Building(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class BuildingImage(models.Model):
+    building = models.ForeignKey(Building, on_delete=models.CASCADE, related_name='additional_images')
+    image = models.ImageField(
+        upload_to='building_images/',
+        blank=True, 
+        null=True,
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'gif', 'webp'])],
+        help_text="Optional. Upload an image for the building (JPEG, PNG, GIF, WEBP)"
+    )
+    caption = models.CharField(max_length=255, blank=True)
+    order = models.PositiveIntegerField(default=0, help_text="Order to display the images")
+    
+    class Meta:
+        ordering = ['order']
+    
+    def __str__(self):
+        return f"Image for {self.building.name} - {self.id}"
 
 
 class Floor(models.Model):

@@ -1,6 +1,6 @@
 # Building Management API
 
-A Django REST Framework API for managing buildings, floors, and flats.
+A Django REST Framework API for managing buildings, floors, and flats with integrated chat functionality.
 
 ## Features
 
@@ -9,6 +9,7 @@ A Django REST Framework API for managing buildings, floors, and flats.
 - Floor and flat management
 - 3D model support
 - API documentation with Swagger/ReDoc
+- Robust chat system between users and companies
 - Strict permission structure:
   - Admin users have full CRUD access
   - Regular users have read-only access
@@ -114,8 +115,37 @@ The API implements a strict permission structure:
 
 This ensures that only admin users can make changes to the system data, while regular users have read-only access. For more details, see [PERMISSIONS.md](PERMISSIONS.md).
 
+## Chat System
+
+The application includes a robust chat system that allows users to communicate with companies. Full documentation for the chat system is available in [README-CHAT.md](README-CHAT.md).
+
+### Chat API Endpoints
+
+- `GET /api/chat/companies-list/`: List all companies available for chat
+- `POST /api/chats/`: Create a new chat with a company
+- `GET /api/chats/{id}/messages/`: View all messages in a specific chat
+- `POST /api/chats/{id}/send_message/`: Send a message in a chat
+- `GET /api/chats/unread_count/`: Check unread messages count
+- `GET /api/company-chats/`: View all chats for a company (company representatives)
+- `POST /api/company-chats/{id}/reply/`: Reply to a user message (company representatives)
+
+### Implementation Details
+
+The chat system code is organized in dedicated files:
+- `api/chat_views.py`: Contains all chat-related views
+- `api/chat_serializers.py`: Contains serializers for chat models
+- `api/CHAT_IMPLEMENTATION.md`: Detailed implementation guide
+
 ## Running Tests
 
 ```bash
 python manage.py test
+```
+
+### Testing the Chat System
+
+You can test the chat functionality using the provided test script:
+
+```bash
+python manage.py shell < test_chat.py
 ```

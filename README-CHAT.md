@@ -125,8 +125,10 @@ Get the count of unread messages across all chats.
 
 ```
 GET /chats/unread_count/
-```
 
+
+
+```
 **Example Response:**
 ```json
 [

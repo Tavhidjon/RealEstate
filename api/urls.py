@@ -4,10 +4,10 @@ from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 
 from .views import (
     CompanyViewSet, BuildingViewSet, FloorViewSet, FlatViewSet,
-    RegisterView, UserDetailView, logout_view, protected_example_view,
-    admin_panel_view, ChatViewSet, CompanyChatListView, CompanyChatViewSet,
-    ProfileRedirectView, SwaggerUIWithAuth
+    RegisterView, UserDetailView, AllUsersListView, logout_view, protected_example_view,
+    admin_panel_view, ProfileRedirectView, SwaggerUIWithAuth, BuildingImageViewSet
 )
+from .chat_views import ChatViewSet, CompanyChatListView, CompanyChatViewSet
 from .auth import EmailTokenObtainPairView
 from .root_view import ApiRootView
 from .auth_instructions import AuthInstructionsView
@@ -15,6 +15,7 @@ from .auth_instructions import AuthInstructionsView
 router = DefaultRouter()
 router.register(r'companies', CompanyViewSet)
 router.register(r'buildings', BuildingViewSet)
+router.register(r'building-images', BuildingImageViewSet)
 router.register(r'floors', FloorViewSet)
 router.register(r'flats', FlatViewSet)
 router.register(r'chats', ChatViewSet, basename='chat')
@@ -27,6 +28,8 @@ auth_urlpatterns = [
     path('verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('logout/', logout_view, name='logout'),
     path('profile/', UserDetailView.as_view(), name='user-detail'),
+    # Admin-only endpoint to list all users
+    path('users/all/', AllUsersListView.as_view(), name='all-users-list'),
     # Add a debug endpoint for easier testing
     path('debug-register/', RegisterView.as_view(), name='debug-register'),
 ]

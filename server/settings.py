@@ -176,8 +176,8 @@ SWAGGER_SETTINGS = {
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),  # 15 minutes
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),     # 7 days
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),     # 7 days
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),   # 30 days
     'ROTATE_REFRESH_TOKENS': True,  # Automatically rotate refresh tokens
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,  # Update last login timestamp

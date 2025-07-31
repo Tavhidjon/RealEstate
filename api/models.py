@@ -16,7 +16,14 @@ class AppUser(AbstractUser):
     REQUIRED_FIELDS = ['username']  
 
     def __str__(self):
+        if self.company:
+            return f"{self.email} (Company Owner: {self.company.name})"
         return self.email
+        
+    @property
+    def is_company_owner(self):
+        """Check if user is a company owner/representative"""
+        return self.company is not None
 
 
 class Company(models.Model):

@@ -123,6 +123,30 @@ class BuildingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Building
         fields = '__all__'
+    
+    def validate_company(self, value):
+        """
+        Validate that company owners can only create buildings for their own company
+        """
+        request = self.context.get('request')
+        if request and request.user and not request.user.is_staff and request.user.company:
+            # Company owners can only create buildings for their own company
+            if value.id != request.user.company.id:
+                raise serializers.ValidationError(
+                    "You can only create buildings for your own company."
+                )
+        return value
+
+    def create(self, validated_data):
+        """
+        Override create method to automatically set company for company owners
+        """
+        request = self.context.get('request')
+        if request and request.user and not request.user.is_staff and request.user.company:
+            # For company owners, automatically set the company
+            validated_data['company'] = request.user.company
+            
+        return super().create(validated_data)
 
 
 # Floor Serializer

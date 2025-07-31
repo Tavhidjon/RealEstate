@@ -60,3 +60,32 @@ class IsOwnerOrAdmin(permissions.BasePermission):
         
         # If object doesn't have user field, deny access
         return False
+
+
+class IsCompanyOwner(permissions.BasePermission):
+    """
+    Custom permission to only allow company owners access.
+    Users must have company field set to a valid company to have access.
+    """
+    message = "You must be a company owner to access this resource."
+    
+    def has_permission(self, request, view):
+        # Check if the user is authenticated and has a company
+        return request.user and request.user.is_authenticated and request.user.company is not None
+
+
+class IsCompanyOwnerOrAdmin(permissions.BasePermission):
+    """
+    Custom permission to only allow:
+    - Company owners to access their own company data
+    - Admins can access all data
+    """
+    message = "You must be a company owner or admin."
+    
+    def has_permission(self, request, view):
+        # Admin users have full access
+        if request.user and request.user.is_staff:
+            return True
+            
+        # Company owners have access
+        return request.user and request.user.is_authenticated and request.user.company is not None

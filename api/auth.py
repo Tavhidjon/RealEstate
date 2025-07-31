@@ -20,6 +20,14 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['is_staff'] = user.is_staff
         token['name'] = user.get_full_name()
         
+        # Add company information if user is linked to a company
+        if user.company:
+            token['company_id'] = user.company.id
+            token['company_name'] = user.company.name
+            token['is_company_owner'] = True
+        else:
+            token['is_company_owner'] = False
+        
         return token
 
 

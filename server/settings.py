@@ -31,6 +31,12 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    # Django Unfold admin
+    'unfold',
+    'unfold.contrib.filters',  # Optional for custom filters
+    'unfold.contrib.forms',    # Optional for custom forms
+    
+    # Default django apps
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -195,3 +201,9 @@ SIMPLE_JWT = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Unfold Admin Configuration - Minimal setup to avoid errors
+UNFOLD = {
+    "SITE_TITLE": "Real Estate Admin",
+    "SITE_HEADER": "Real Estate Management"
+}

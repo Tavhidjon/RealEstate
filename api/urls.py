@@ -5,16 +5,17 @@ from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 from .views import (
     CompanyViewSet, BuildingViewSet, FloorViewSet, FlatViewSet,
     RegisterView, UserDetailView, AllUsersListView, logout_view, protected_example_view,
-    admin_panel_view, ProfileRedirectView, SwaggerUIWithAuth, BuildingImageViewSet
+    admin_panel_view, ProfileRedirectView, BuildingImageViewSet
 )
 from .chat_views import ChatViewSet, CompanyChatListView, CompanyChatViewSet
 from .auth import EmailTokenObtainPairView
 from .root_view import ApiRootView
 from .auth_instructions import AuthInstructionsView
+from .company_owner_views import CompanyOwnerRegisterView, CompanyOwnerListView
 
 router = DefaultRouter()
 router.register(r'companies', CompanyViewSet)
-router.register(r'buildings', BuildingViewSet)
+router.register(r'buildings', BuildingViewSet, basename='building')
 router.register(r'building-images', BuildingImageViewSet)
 router.register(r'floors', FloorViewSet)
 router.register(r'flats', FlatViewSet)
@@ -30,6 +31,9 @@ auth_urlpatterns = [
     path('profile/', UserDetailView.as_view(), name='user-detail'),
     # Admin-only endpoint to list all users
     path('users/all/', AllUsersListView.as_view(), name='all-users-list'),
+    # Admin-only endpoints for company owners
+    path('register-company-owner/', CompanyOwnerRegisterView.as_view(), name='register-company-owner'),
+    path('company-owners/', CompanyOwnerListView.as_view(), name='company-owners-list'),
     # Add a debug endpoint for easier testing
     path('debug-register/', RegisterView.as_view(), name='debug-register'),
 ]

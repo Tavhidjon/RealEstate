@@ -8,6 +8,10 @@ from .views import (
     admin_panel_view, ProfileRedirectView, BuildingImageViewSet
 )
 from .chat_views import ChatViewSet, CompanyChatListView, CompanyChatViewSet
+from .company_owner_chat_views import (
+    CompanyOwnerChatListView, CompanyOwnerChatDetailView,
+    CompanyOwnerSendMessageView, CompanyOwnerGetUserListView
+)
 from .auth import EmailTokenObtainPairView
 from .root_view import ApiRootView
 from .auth_instructions import AuthInstructionsView
@@ -40,6 +44,11 @@ auth_urlpatterns = [
 
 chat_urlpatterns = [
     path('companies-list/', CompanyChatListView.as_view(), name='chat-companies-list'),
+    # Company Owner chat endpoints
+    path('company-owner/chats/', CompanyOwnerChatListView.as_view(), name='company-owner-chats'),
+    path('company-owner/chat/<int:pk>/', CompanyOwnerChatDetailView.as_view(), name='company-owner-chat-detail'),
+    path('company-owner/chat/<int:chat_id>/send/', CompanyOwnerSendMessageView.as_view(), name='company-owner-send-message'),
+    path('company-owner/users/', CompanyOwnerGetUserListView.as_view(), name='company-owner-users-with-chats'),
 ]
 
 urlpatterns = [

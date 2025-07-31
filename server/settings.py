@@ -31,10 +31,8 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    # Django Unfold admin
-    'unfold',
-    'unfold.contrib.filters',  # Optional for custom filters
-    'unfold.contrib.forms',    # Optional for custom forms
+    # Jazzmin admin (alternative to unfold)
+    'jazzmin',
     
     # Default django apps
     'django.contrib.admin',
@@ -202,8 +200,11 @@ SIMPLE_JWT = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Unfold Admin Configuration - Minimal setup to avoid errors
-UNFOLD = {
-    "SITE_TITLE": "Real Estate Admin",
-    "SITE_HEADER": "Real Estate Management"
+# Jazzmin Admin Configuration
+JAZZMIN_SETTINGS = {
+    "site_title": "Real Estate Admin",
+    "site_header": "Real Estate Management",
+    "site_brand": "Real Estate",
+    "welcome_sign": "Welcome to Real Estate Admin",
+    "copyright": "Real Estate Admin"
 }
